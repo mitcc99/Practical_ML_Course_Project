@@ -1,0 +1,135 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Mitchell Clarke"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction and Background
+Introduction\
+This is the final project for the Coursera Practical Machine Learning Course for the Data Science: Statistics and Machine Learning Specialization. 
+
+Background\
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks.One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it.
+
+In this project, the goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. The six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).Using a random forest model, we will predict the fashion in which a testing set of exercises was performed.
+
+The training data for this project are available here: 
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: 
+http://groupware.les.inf.puc-rio.br/har
+
+
+# Load the Required Libraries and Read/Download Files
+
+Packages
+```{r, warning=FALSE}
+library(caret)
+library(dplyr)
+library(corrplot)
+```
+Read in Training and Testing Sets
+```{r, results='markup'}
+Training <- read.csv(url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"))
+
+Testing <- read.csv(url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"))
+```
+
+# Data Cleaning and Preparation
+First, look at the number of observations and variables of both datasets.
+```{r, results='markup'}
+dim(Training)
+dim(Testing)
+```
+
+Remove the first 7 variables that are unnecessary to our model, and also any columns that contain NA values signifying missing data.
+```{r, results='markup'}
+TrainingClean <- Training %>% dplyr::select(-c(X:num_window)) %>% dplyr::select_if(~ !any(is.na(.)))
+```
+
+We also want to remove variables with near zero variance since these are not predictive of classe. We use the nearZeroVar function in the caret package to do this.
+```{r, results='markup'}
+RemTrain <- nearZeroVar(TrainingClean)
+
+TrainingClean <- TrainingClean[,-RemTrain]
+```
+
+Now we get the same columns for the testing set using dplyr.
+```{r, results='markup'}
+TestingCleanNames <- intersect(names(TrainingClean), names(Testing))
+
+TestingClean <- Testing %>% dplyr::select(all_of(TestingCleanNames))
+```
+We now have two datasets with the same variables (excluding the classe variable which is excluded from our quiz test set).
+```{r, results='markup'}
+dim(TrainingClean)
+dim(TestingClean)
+```
+
+# Partition Data Into a Testing and Training Set
+We will use 70% for the training set and 30% for the testing set. We will only use the true testing set (with 20 observations) for the quiz results, so we want another testing set (called validation) to test the accuracy and out of sample error of our model.
+
+Set seed for reproducibility.
+```{r, results='markup'}
+set.seed(3421)
+```
+```{r, results='markup'}
+inTraining <- createDataPartition(TrainingClean$classe, p=0.7, list = FALSE)
+
+TrainingData <- TrainingClean[inTraining,]
+ValidationData <- TrainingClean[-inTraining,]
+```
+
+# Fitting our Model
+For simplicity, we will just use a random forest model with 5-fold cross validation. 
+```{r, results='markup'}
+ctrl <- trainControl(method = "cv", number = 5)
+
+rfmodel <- train(classe ~ ., data=TrainingData, method="rf", trControl=ctrl, prox= TRUE)
+rfmodel
+```
+
+# Predictions on Our Test Set
+Now we use the rfmodel to predict on our ValidationData dataset we partitioned before.
+```{r, results='markup'}
+rfprediction <- predict(rfmodel, ValidationData)
+cfnmatrix <- confusionMatrix(as.factor(ValidationData$classe), rfprediction)
+cfnmatrix
+```
+# Accuracy and Out of Sample Error
+Accuracy from our confusion matrix is 0.992.
+```{r, results='markup'}
+postResample(as.factor(ValidationData$classe), rfprediction)
+```
+The out of sample error is 0.0079.
+```{r, results='markup'}
+OutofSampleError <- 1 - cfnmatrix$overall[[1]]
+OutofSampleError
+```
+
+# Predictions on the Quiz Test Set
+```{r, results='markup'}
+testquizprediction <- predict(rfmodel, TestingClean)
+testquizprediction
+```
+\newpage
+# Appendix 
+Figure 1 Correlation Plot
+```{r, results='markup'}
+Correlations <- cor(sapply(TrainingData[,-53], as.numeric))
+corrplot(Correlations)
+```
+\
+Figure 2 Model Plot
+```{r, results='markup'}
+plot(rfmodel)
+```
+
